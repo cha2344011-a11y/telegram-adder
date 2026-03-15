@@ -14,7 +14,7 @@ from core.scheduler import (DailyStateManager, load_all_accounts,
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "tg_migration_2024")
-async_mode = "eventlet" if os.environ.get("RENDER") else "threading"
+async_mode = "threading"
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode=async_mode)
 
 invite_engine_instance = None
