@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram Migration Tool – Pro Dashboard</title>
+  <meta name="description" content="Professional Telegram Group Member Migration Tool with multi-account support, real-time progress and safety limits." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ─── Header ─────────────────────────────────────────────── -->
+<header class="header">
+  <div class="logo">
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="16" fill="url(#logoGrad)"/>
+      <path d="M7 16.5l4.5 4.5 9.5-10" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <defs>
+        <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+          <stop offset="0%" stop-color="#2AABEE"/>
+          <stop offset="100%" stop-color="#007AFF"/>
+        </linearGradient>
+      </defs>
+    </svg>
+    <span>TG <strong>Migrator</strong> <em class="badge">Pro</em></span>
+  </div>
+  <div class="header-status">
+    <span id="conn-dot" class="dot red"></span>
+    <span id="conn-label">Disconnected</span>
+  </div>
+</header>
+
+<!-- ─── Main Grid ───────────────────────────────────────────── -->
+<main class="grid">
+
+  <!-- ── LEFT PANEL ─────────────────────────────────────────── -->
+  <section class="panel left-panel">
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="scrape">🔍 Scrape</button>
+      <button class="tab" data-tab="auto">🤖 Auto</button>
+      <button class="tab" data-tab="accounts">👤 Accounts</button>
+      <button class="tab" data-tab="settings">⚙️ Settings</button>
+    </div>
+
+    <!-- ── TAB: SCRAPE ───────────────────────────────────────── -->
+    <div id="tab-scrape" class="tab-content active">
+      <h2>Scrape Members</h2>
+      <p class="desc">Fetch all visible members from a Telegram group / channel.</p>
+
+      <label>API ID <span class="req">*</span>
+        <input id="s-api-id" type="text" placeholder="1234567" />
+      </label>
+      <label>API Hash <span class="req">*</span>
+        <input id="s-api-hash" type="text" placeholder="abc123def456..." />
+      </label>
+      <label>Phone Number <span class="req">*</span>
+        <input id="s-phone" type="text" placeholder="+919876543210" />
+      </label>
+      <label>Source Group / Channel <span class="req">*</span>
+        <input id="s-source" type="text" placeholder="@groupusername or t.me/invite/..." />
+      </label>
+
+      <div id="otp-box" class="otp-box hidden">
+        <p>📲 Enter the OTP sent to <strong id="otp-phone"></strong></p>
+        <div class="otp-row">
+          <input id="otp-code" type="text" placeholder="12345" maxlength="6" />
+          <button id="otp-submit-btn" class="btn primary">Verify</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button id="start-scrape-btn" class="btn primary wide">
+          <span>▶ Start Scraping</span>
+        </button>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <span class="stat-num" id="total-scraped">0</span>
+          <span class="stat-lbl">Members Scraped</span>
+        </div>
+      </div>
+
+      <div class="download-row hidden" id="download-scraped">
+        <button class="btn ghost" onclick="download('scraped')">⬇ Download scraped_members.csv</button>
+      </div>
+    </div>
+
+    <!-- ── TAB: AUTO SCHEDULER ─────────────────────────────────── -->
+    <div id="tab-auto" class="tab-content">
+      <h2>🤖 Auto Scheduler</h2>
+      <p class="desc">Set karo aur bhool jao! Tool khud hi din bhar random time pe members add karta rahega.</p>
+
+      <!-- Scheduler status badge -->
+      <div id="scheduler-status-bar" class="scheduler-bar stopped">
+        <span id="scheduler-dot" class="dot red"></span>
+        <span id="scheduler-label">Auto-Scheduler: Stopped</span>
+      </div>
+
+      <label>Target Group <span class="req">*</span>
+        <input id="auto-target" type="text" placeholder="@nayagroup" />
+      </label>
+
+      <div class="info-box">
+        <strong>📊 Aaj ka Plan (per account):</strong>
+        <ul>
+          <li>✅ 120 invites / account / day</li>
+          <li>🎲 8–12 random batches (din bhar spread)</li>
+          <li>⏱️ 30–60s random delay (between invites)</li>
+          <li>🌙 Midnight pe auto-reset</li>
+        </ul>
+      </div>
+
+      <div class="btn-row">
+        <button id="start-auto-btn" class="btn primary">🚀 Start Auto (Set & Forget)</button>
+        <button id="stop-auto-btn" class="btn danger">⏹ Stop</button>
+      </div>
+
+      <!-- Overall progress bar -->
+      <div class="progress-wrap">
+        <div class="progress-labels">
+          <span>Overall Migration</span>
+          <span id="progress-pct">0%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+        </div>
+      </div>
+
+      <div class="stat-row threecol">
+        <div class="stat-card green">
+          <span class="stat-num" id="total-invited">0</span>
+          <span class="stat-lbl">Invited (All Time)</span>
+        </div>
+        <div class="stat-card blue">
+          <span class="stat-num" id="total-today">0</span>
+          <span class="stat-lbl">Today</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-num" id="total-remaining">—</span>
+          <span class="stat-lbl">Remaining</span>
+        </div>
+      </div>
+
+      <div class="download-row">
+        <button class="btn ghost" onclick="download('invited')">⬇ Invited CSV</button>
+        <button class="btn ghost" onclick="download('failed')">⬇ Failed CSV</button>
+      </div>
+    </div>
+
+    <!-- ── TAB: ACCOUNTS ─────────────────────────────────────── -->
+    <div id="tab-accounts" class="tab-content">
+      <h2>Telegram Accounts</h2>
+      <p class="desc">Accounts auto-load from <code>sessions_config.json</code>. Har account ka aaj ka progress neeche dikhega.</p>
+
+      <button id="refresh-accounts-btn" class="btn secondary wide">🔄 Refresh Account Stats</button>
+
+      <!-- Live per-account stats -->
+      <div id="accounts-live-list" class="accounts-list">
+        <p class="empty-msg">Loading account data...</p>
+      </div>
+
+      <hr class="divider" />
+      <p class="section-label">Manually add account (for manual invite mode only):</p>
+      <label>API ID
+        <input id="acc-api-id" type="text" placeholder="1234567" />
+      </label>
+      <label>API Hash
+        <input id="acc-api-hash" type="text" placeholder="abc123..." />
+      </label>
+      <label>Phone Number
+        <input id="acc-phone" type="text" placeholder="+919876543210" />
+      </label>
+      <button id="add-acc-btn" class="btn secondary wide">+ Add to Manual List</button>
+      <div id="accounts-list" class="accounts-list"></div>
+    </div>
+
+    <!-- ── TAB: SETTINGS ─────────────────────────────────────── -->
+    <div id="tab-settings" class="tab-content">
+      <h2>Settings</h2>
+
+      <label>Daily Limit per Account
+        <input id="setting-limit" type="number" value="120" min="10" max="200" />
+      </label>
+      <label>Min Delay between invites (seconds)
+        <input id="setting-delay-min" type="number" value="30" min="10" />
+      </label>
+      <label>Max Delay between invites (seconds)
+        <input id="setting-delay-max" type="number" value="60" min="20" />
+      </label>
+
+      <div class="info-box" style="margin-top:12px">
+        <strong>💡 Recommended Settings:</strong>
+        <ul>
+          <li>Naya account: limit = 30–40</li>
+          <li>Purana account (6+ months): limit = 80–120</li>
+          <li>Bahut purana (1 year+): limit = 120–150</li>
+          <li>Delay 30–60s → safe zone</li>
+        </ul>
+      </div>
+
+      <hr class="divider" />
+      <h3>SOCKS5 Proxy (optional)</h3>
+      <label>Proxy Host
+        <input id="proxy-host" type="text" placeholder="127.0.0.1" />
+      </label>
+      <label>Proxy Port
+        <input id="proxy-port" type="number" placeholder="1080" />
+      </label>
+    </div>
+
+  </section>
+
+  <!-- ── RIGHT PANEL: Live Logs ──────────────────────────────── -->
+  <section class="panel right-panel">
+    <div class="log-header">
+      <h2>📋 Live Logs</h2>
+      <button id="clear-log-btn" class="btn ghost small">Clear</button>
+    </div>
+    <div id="log-box" class="log-box">
+      <p class="log-entry info">ℹ️ Tool ready. Configure settings and start.</p>
+    </div>
+  </section>
+
+</main>
+
+<!-- ─── OTP Modal ────────────────────────────────────────────── -->
+<!-- OTP is embedded in scrape tab, but could be a modal too -->
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

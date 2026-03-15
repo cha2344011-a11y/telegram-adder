@@ -1,0 +1,21 @@
+# Sensitive session files - NEVER commit
+sessions/
+*.session
+*.session-journal
+sessions_config.json
+
+# Temp files
+*.tmp
+__pycache__/
+*.pyc
+.env
+
+# Data files - most should NOT be committed
+# EXCEPTION: scraped_members.csv IS committed so Render can use it
+data/daily_state.json
+data/today_schedule.json
+data/app_config.json
+
+# Keep these (needed for Render deployment):
+# data/scraped_members.csv   ← DO commit this!
+# data/invited_members.csv   ← optional, helps track progress
