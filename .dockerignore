@@ -1,0 +1,14 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.session
+*.session-journal
+.vscode
+*.bat
+runtime.txt
+Procfile
+data/daily_state.json
+data/today_schedule.json
+data/app_config.json
