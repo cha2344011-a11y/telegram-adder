@@ -524,6 +524,7 @@ class DailyAutoRunner:
             target_input  = InputChannel(target_entity.id, target_entity.access_hash)
 
             state = DailyStateManager()
+            skipped_count = 0
 
             for _ in range(count):
                 if not pending or self.stop_flag.is_set():
@@ -532,6 +533,7 @@ class DailyAutoRunner:
                 member = pending.pop(0)
                 uid    = member.get("user_id", "")
                 uname  = member.get("username") or f"id:{uid}"
+                success_this_round = False
 
                 try:
                     if member.get("username"):
@@ -542,6 +544,7 @@ class DailyAutoRunner:
                     await client(InviteToChannelRequest(target_input, [user_to_add]))
 
                     invited_count += 1
+                    success_this_round = True
                     state.increment_account(phone, 1)
 
                     _append_csv(INVITED_FILE, {
@@ -575,10 +578,11 @@ class DailyAutoRunner:
                     continue
 
                 except UserAlreadyParticipantError:
-                    pass  # silently skip
+                    skipped_count += 1
 
                 except (UserPrivacyRestrictedError, InputUserDeactivatedError,
                         UserBannedInChannelError, UserNotMutualContactError, ValueError, ChatWriteForbiddenError) as e:
+                    skipped_count += 1
                     _append_csv(FAILED_FILE, {
                         "user_id":   uid,
                         "username":  member.get("username", ""),
@@ -591,10 +595,23 @@ class DailyAutoRunner:
                     break
 
                 except Exception as ex:
-                    self._emit("log", {"msg": f"❌ {uname}: {ex}", "type": "error"})
+                    skipped_count += 1
+                    err_str = str(ex).lower()
+                    if "invalid object id" in err_str or "invalid reference format" in err_str:
+                        # Silently skip username-less users with bad access_hash
+                        _append_csv(FAILED_FILE, {
+                            "user_id":   uid,
+                            "username":  member.get("username", ""),
+                            "reason":    "No_Username_Invalid_ID",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                    else:
+                        self._emit("log", {"msg": f"❌ {uname}: {ex}", "type": "error"})
 
-                # Random delay between invites
-                delay = random.uniform(self.delay_min, self.delay_max)
+                if success_this_round:
+                    delay = random.uniform(self.delay_min, self.delay_max)
+                else:
+                    delay = random.uniform(2, 5)  # fast skip to not hang
                 await asyncio.sleep(delay)
 
         except Exception as ex:
@@ -608,7 +625,7 @@ class DailyAutoRunner:
         done_today = DailyStateManager().get_account_today_count(phone)
         limit      = acc.get("daily_limit", 120)
         self._emit("log", {
-            "msg": f"✔️ [{name}] Batch done: +{invited_count} invited. Today: {done_today}/{limit}",
+            "msg": f"✔️ [{name}] Batch done: +{invited_count} invited, {skipped_count} skipped/failed. Today: {done_today}/{limit}",
             "type": "success"
         })
         self._emit("account_update", get_accounts_dashboard_data()[0])
