@@ -295,11 +295,11 @@ class InviteEngine:
                         pass
 
                     except (UserPrivacyRestrictedError, InputUserDeactivatedError,
-                            UserBannedInChannelError, UserNotMutualContactError) as e:
+                            UserBannedInChannelError, UserNotMutualContactError, ValueError) as e:
                         failed += 1
                         _append_csv(FAILED_FILE, {
                             "user_id": uid, "username": member.get("username", ""),
-                            "reason": type(e).__name__, "timestamp": datetime.now().isoformat()
+                            "reason": "Privacy/Invalid_ID", "timestamp": datetime.now().isoformat()
                         })
 
                     except PeerFloodError:
