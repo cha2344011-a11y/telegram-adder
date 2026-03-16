@@ -94,6 +94,20 @@ document.getElementById("start-auto-btn").addEventListener("click", () => {
 
   if (!target) { addLog("❌ Target group enter karo!", "error"); return; }
 
+  // ── Turant progress load karo before scheduler fires ──
+  fetch("/api/progress").then(r => r.json()).then(data => {
+    document.getElementById("total-invited").textContent   = data.invited   || 0;
+    document.getElementById("total-today").textContent     = data.daily?.total_today || 0;
+    document.getElementById("total-remaining").textContent = data.remaining || "—";
+    if (data.total > 0) {
+      const pct = Math.min(100, Math.round((data.invited / data.total) * 100));
+      document.getElementById("progress-bar").style.width = `${pct}%`;
+      document.getElementById("progress-pct").textContent  = `${pct}%`;
+    }
+    if (data.accounts) renderAccountsLive(data.accounts, data.daily);
+    addLog(`📊 Stats loaded: ${data.invited || 0} invited, ${data.remaining || 0} remaining.`, "info");
+  }).catch(() => {});
+
   socket.emit("start_auto_scheduler", {
     target_group: target,
     delay_min: parseFloat(delay_min),
@@ -123,11 +137,85 @@ socket.on("scheduler_status", data => {
   }
 });
 
+// ── Next Batch Live Panel ────────────────────────────────────────────────────
+socket.on("next_batches", data => {
+  let panel = document.getElementById("next-batch-panel");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "next-batch-panel";
+    panel.style.cssText = `
+      margin: 10px 0 6px 0;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 13px;
+    `;
+    const bar = document.getElementById("scheduler-status-bar");
+    if (bar) bar.parentNode.insertBefore(panel, bar.nextSibling);
+  }
+
+  const accs = data.accounts || [];
+  panel.innerHTML = `
+    <div style="font-weight:700; margin-bottom:7px; color:#a78bfa;">⏰ Agle Batches & Aaj ka Score</div>
+    ${accs.map(a => {
+      const pct = Math.min(100, Math.round((a.done_today / (a.limit || 1)) * 100));
+      const barColor = pct >= 100 ? "#22c55e" : "#a78bfa";
+      const isFiring = a.mins_left === 0;
+      const timeLabel = a.mins_left < 0
+        ? `<span style="color:#6b7280">Kal ke liye reset</span>`
+        : isFiring
+          ? `<span style="color:#f59e0b; font-weight:700; animation:pulse 1s infinite;">🔥 FIRING NOW!</span>`
+          : `<span style="color:#38bdf8">⏳ ${a.next_at} <small>(${a.mins_left} min baad)</small></span>`;
+      return `
+        <div style="display:flex; flex-direction:column; gap:3px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.07); ${isFiring ? 'border:1.5px solid #f59e0b; border-radius:8px; padding:6px; box-shadow:0 0 12px rgba(245,158,11,0.4);' : ''}">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-weight:600; color:#e2e8f0">👤 ${a.name}</span>
+            <span style="color:#94a3b8">${a.done_today}/${a.limit} aaj &nbsp; | &nbsp; ${a.batches_left} batches baaki</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="flex:1; background:rgba(255,255,255,0.08); border-radius:99px; height:6px; overflow:hidden;">
+              <div style="width:${pct}%; height:100%; background:${barColor}; border-radius:99px; transition:width 0.5s;"></div>
+            </div>
+            ${timeLabel}
+          </div>
+        </div>`;
+    }).join("")}
+  `;
+});
+
 // Daily summary update
 socket.on("daily_update", data => {
   document.getElementById("total-today").textContent = data.total_today || 0;
   document.getElementById("total-invited").textContent = data.total_all_time || 0;
 });
+
+// ── Toast Notification ───────────────────────────────────────────────────────
+function showToast(msg, color = "#22c55e") {
+  let toast = document.getElementById("invite-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "invite-toast";
+    toast.style.cssText = `
+      position:fixed; bottom:28px; right:28px; z-index:9999;
+      padding:12px 22px; border-radius:14px;
+      font-weight:700; font-size:15px; color:#fff;
+      box-shadow:0 4px 24px rgba(0,0,0,0.4);
+      transition:opacity 0.4s, transform 0.4s;
+      pointer-events:none;
+    `;
+    document.body.appendChild(toast);
+  }
+  toast.style.background = color;
+  toast.textContent = msg;
+  toast.style.opacity = "1";
+  toast.style.transform = "translateY(0)";
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(16px)";
+  }, 2200);
+}
 
 // Invite progress (overall)
 socket.on("invite_progress", data => {
@@ -137,6 +225,7 @@ socket.on("invite_progress", data => {
   const pct   = Math.min(100, Math.round(((data.invited) / total) * 100));
   document.getElementById("progress-bar").style.width  = `${pct}%`;
   document.getElementById("progress-pct").textContent   = `${pct}%`;
+  showToast(`✅ +1 Member Added! Total: ${data.invited}`);
 });
 
 socket.on("invite_done", data => {

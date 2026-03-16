@@ -487,6 +487,39 @@ class DailyAutoRunner:
 
                         break  # One batch per account per loop tick
 
+            # ── Emit upcoming schedule to UI ──
+            now = datetime.now()
+            next_info = []
+            for phone, data in self.schedules.items():
+                acc = data.get("account", {})
+                name = acc.get("name", phone)
+                done_today = DailyStateManager().get_account_today_count(phone)
+                limit = acc.get("daily_limit", 120)
+                pending_batches = [b for b in data.get("batches", []) if not b["done"]]
+                if pending_batches:
+                    nxt = pending_batches[0]
+                    nxt_time = datetime.fromisoformat(nxt["at"])
+                    secs_left = max(0, int((nxt_time - now).total_seconds()))
+                    mins_left = secs_left // 60
+                    next_info.append({
+                        "name":       name,
+                        "next_at":    nxt["at_human"],
+                        "mins_left":  mins_left,
+                        "done_today": done_today,
+                        "limit":      limit,
+                        "batches_left": len(pending_batches)
+                    })
+                else:
+                    next_info.append({
+                        "name":       name,
+                        "next_at":    "Kal",
+                        "mins_left":  -1,
+                        "done_today": done_today,
+                        "limit":      limit,
+                        "batches_left": 0
+                    })
+            self._emit("next_batches", {"accounts": next_info})
+
             # Sleep 60 seconds before next check
             self.stop_flag.wait(timeout=60)
 
