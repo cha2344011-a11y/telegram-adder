@@ -27,8 +27,11 @@ os.makedirs("data", exist_ok=True)
 def load_app_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE) as f:
-            return json.load(f)
-    return {"target_group": "", "delay_min": 30, "delay_max": 60}
+            data = json.load(f)
+            if not data.get("target_group"):
+                data["target_group"] = os.environ.get("TARGET_GROUP", "")
+            return data
+    return {"target_group": os.environ.get("TARGET_GROUP", ""), "delay_min": 30, "delay_max": 60}
 
 def save_app_config(data):
     with open(CONFIG_FILE, "w") as f:
