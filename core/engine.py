@@ -156,10 +156,10 @@ async def scrape_members(api_id, api_hash, phone, source_group, socketio, sessio
         writer = csv.writer(f)
         writer.writerow(["user_id", "username", "first_name", "last_name", "access_hash"])
         for u in all_participants:
-            if u.bot or u.deleted:
+            if u.bot or u.deleted or not u.username:
                 continue
             writer.writerow([
-                u.id, u.username or "",
+                u.id, u.username,
                 u.first_name or "", u.last_name or "",
                 u.access_hash
             ])
