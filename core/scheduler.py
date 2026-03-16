@@ -237,12 +237,16 @@ def generate_random_schedule(daily_limit=120, end_hour=23):
     offsets = sorted(random.sample(range(0, available_seconds, max(1, min_gap // 2)),
                                    min(len(invite_counts), available_seconds // max(1, min_gap // 2))))
 
+    # KICKSTART: Force the very first batch to fire almost immediately (within 10-60 secs)
+    if offsets:
+        offsets[0] = random.randint(10, 60)
+
     # Trim to match invite_counts length
     invite_counts = invite_counts[:len(offsets)]
 
     schedule = []
     for offset, count in zip(offsets, invite_counts):
-        batch_time = now + timedelta(seconds=offset + random.randint(0, 300))
+        batch_time = now + timedelta(seconds=offset)
         if batch_time > end_dt:
             break
         schedule.append({
