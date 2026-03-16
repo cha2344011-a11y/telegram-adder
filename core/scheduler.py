@@ -23,7 +23,7 @@ from telethon.tl.types import InputPeerUser, InputChannel
 from telethon.errors import (
     FloodWaitError, UserPrivacyRestrictedError, UserAlreadyParticipantError,
     PeerFloodError, InputUserDeactivatedError,
-    UserBannedInChannelError, UserNotMutualContactError
+    UserBannedInChannelError, UserNotMutualContactError, ChatWriteForbiddenError
 )
 
 DATA_DIR         = "data"
@@ -578,11 +578,11 @@ class DailyAutoRunner:
                     pass  # silently skip
 
                 except (UserPrivacyRestrictedError, InputUserDeactivatedError,
-                        UserBannedInChannelError, UserNotMutualContactError, ValueError) as e:
+                        UserBannedInChannelError, UserNotMutualContactError, ValueError, ChatWriteForbiddenError) as e:
                     _append_csv(FAILED_FILE, {
                         "user_id":   uid,
                         "username":  member.get("username", ""),
-                        "reason":    "Privacy/Invalid_ID",
+                        "reason":    "Privacy/No_Write_Perms",
                         "timestamp": datetime.now().isoformat()
                     })
 
