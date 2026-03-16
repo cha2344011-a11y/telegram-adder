@@ -24,6 +24,24 @@ auto_runner_instance   = None  # DailyAutoRunner (background scheduler)
 CONFIG_FILE = "data/app_config.json"
 os.makedirs("data", exist_ok=True)
 
+# ─── Server-side log buffer (last 500 logs) ───────────────────────────────────
+LOG_BUFFER = []  # list of {msg, type, time}
+MAX_LOGS   = 500
+
+_orig_socketio_emit = socketio.emit  # will be overwritten by _patch_socketio
+
+def buffered_emit(event, data, **kwargs):
+    """Wrap socketio.emit to capture 'log' events into LOG_BUFFER."""
+    if event == "log" and isinstance(data, dict):
+        LOG_BUFFER.append({
+            "msg":  data.get("msg", ""),
+            "type": data.get("type", "info"),
+            "time": datetime.now().strftime("%H:%M:%S")
+        })
+        if len(LOG_BUFFER) > MAX_LOGS:
+            LOG_BUFFER.pop(0)
+    _orig_socketio_emit(event, data, **kwargs)
+
 def load_app_config():
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE) as f:
@@ -36,6 +54,13 @@ def load_app_config():
 def save_app_config(data):
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=2)
+
+
+def _patch_socketio():
+    """Patch socketio.emit after app is ready so LOG_BUFFER is populated."""
+    global _orig_socketio_emit
+    _orig_socketio_emit = socketio.emit
+    socketio.emit = buffered_emit
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +88,35 @@ def get_progress():
     data["accounts"] = accounts_data
     data["daily"]    = daily_summary
     return jsonify(data)
+
+
+@app.route("/api/logs")
+def get_logs():
+    """Return buffered server-side logs for page-refresh restore."""
+    return jsonify({"logs": LOG_BUFFER})
+
+
+@app.route("/api/status")
+def get_status():
+    """Return current scheduler status + saved config."""
+    global auto_runner_instance
+    cfg = load_app_config()
+    is_running = bool(
+        auto_runner_instance and
+        auto_runner_instance.thread and
+        auto_runner_instance.thread.is_alive() and
+        not auto_runner_instance.stop_flag.is_set()
+    )
+    accounts = load_all_accounts()
+    total_daily = sum(acc.get("daily_limit", 120) for acc in accounts)
+    return jsonify({
+        "running":      is_running,
+        "target_group": cfg.get("target_group", ""),
+        "delay_min":    cfg.get("delay_min", 30),
+        "delay_max":    cfg.get("delay_max", 60),
+        "accounts":     len(accounts),
+        "total_daily":  total_daily
+    })
 
 
 @app.route("/api/accounts")
@@ -235,19 +289,37 @@ def handle_accounts_status():
 
 @socketio.on("connect")
 def handle_connect():
-    """On client connect, send current scheduler status."""
+    """On client connect, send current scheduler status + buffered logs."""
     global auto_runner_instance
-    is_running = bool(auto_runner_instance and
-                      auto_runner_instance.thread and
-                      auto_runner_instance.thread.is_alive())
-    socketio.emit("scheduler_status", {"running": is_running})
+    cfg = load_app_config()
+    is_running = bool(
+        auto_runner_instance and
+        auto_runner_instance.thread and
+        auto_runner_instance.thread.is_alive() and
+        not auto_runner_instance.stop_flag.is_set()
+    )
+    accounts = load_all_accounts()
+    total_daily = sum(acc.get("daily_limit", 120) for acc in accounts)
 
-    # Also send current account stats
+    # Send scheduler status with full details
+    _orig_socketio_emit("scheduler_status", {
+        "running":      is_running,
+        "accounts":     len(accounts),
+        "total_daily":  total_daily,
+        "target_group": cfg.get("target_group", "")
+    })
+
+    # Send buffered logs so UI can restore them after refresh
+    _orig_socketio_emit("restore_logs", {"logs": LOG_BUFFER})
+
+    # Send current account stats
     accounts_data, daily_summary = get_accounts_dashboard_data()
-    socketio.emit("accounts_status", {"accounts": accounts_data, "daily": daily_summary})
+    _orig_socketio_emit("accounts_status", {"accounts": accounts_data, "daily": daily_summary})
 
 
 if __name__ == "__main__":
+    _patch_socketio()  # Patch emit to capture logs into LOG_BUFFER
+
     port = int(os.environ.get("PORT", 5000))
     print(f"🚀 Telegram Migration Tool running at http://0.0.0.0:{port}")
     all_accounts = load_all_accounts()

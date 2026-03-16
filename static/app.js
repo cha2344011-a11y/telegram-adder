@@ -6,9 +6,11 @@ const accounts = [];
 socket.on("connect", () => {
   document.getElementById("conn-dot").className   = "dot green";
   document.getElementById("conn-label").textContent = "Connected";
-  addLog("✅ Connected to server.", "success");
+  // NOTE: logs & scheduler status are restored via server events (restore_logs, scheduler_status)
+  // We still emit get_accounts_status for live data
   socket.emit("get_accounts_status");
 });
+
 socket.on("disconnect", () => {
   document.getElementById("conn-dot").className   = "dot red";
   document.getElementById("conn-label").textContent = "Disconnected";
@@ -26,19 +28,46 @@ document.querySelectorAll(".tab").forEach(btn => {
 });
 
 // ── Log helper ─────────────────────────────────────────────────────────────
-function addLog(msg, type = "info") {
+function addLog(msg, type = "info", timeStr = null) {
   const box   = document.getElementById("log-box");
   const entry = document.createElement("p");
   entry.className = `log-entry ${type}`;
-  const now   = new Date().toLocaleTimeString();
+  const now   = timeStr || new Date().toLocaleTimeString();
   entry.textContent = `[${now}] ${msg}`;
   box.appendChild(entry);
   box.scrollTop = box.scrollHeight;
 }
+
 document.getElementById("clear-log-btn").addEventListener("click", () => {
   document.getElementById("log-box").innerHTML = "";
 });
+
+// Live log from server
 socket.on("log", d => addLog(d.msg, d.type || "info"));
+
+// ── RESTORE LOGS on reconnect / refresh ─────────────────────────────────────
+socket.on("restore_logs", data => {
+  const box = document.getElementById("log-box");
+  // Only restore if box is empty (first load / fresh tab)
+  if (box.children.length > 0) {
+    // Remove only the initial static "Tool ready" message if present
+    const firstChild = box.firstElementChild;
+    if (firstChild && firstChild.textContent.includes("Tool ready")) {
+      box.innerHTML = "";
+    } else {
+      return; // Already has real logs, don't double-restore
+    }
+  }
+
+  const logs = data.logs || [];
+  if (logs.length === 0) return;
+
+  logs.forEach(entry => {
+    addLog(entry.msg, entry.type || "info", entry.time);
+  });
+  addLog(`🔄 [${logs.length} logs restored from server]`, "warn");
+  box.scrollTop = box.scrollHeight;
+});
 
 // ── OTP ───────────────────────────────────────────────────────────────────
 socket.on("otp_required", data => {
@@ -94,7 +123,12 @@ document.getElementById("start-auto-btn").addEventListener("click", () => {
 
   if (!target) { addLog("❌ Target group enter karo!", "error"); return; }
 
-  // ── Turant progress load karo before scheduler fires ──
+  // Save target group to localStorage as backup
+  localStorage.setItem("tg_target_group", target);
+  localStorage.setItem("tg_delay_min", delay_min);
+  localStorage.setItem("tg_delay_max", delay_max);
+
+  // Load progress immediately
   fetch("/api/progress").then(r => r.json()).then(data => {
     document.getElementById("total-invited").textContent   = data.invited   || 0;
     document.getElementById("total-today").textContent     = data.daily?.total_today || 0;
@@ -120,7 +154,7 @@ document.getElementById("stop-auto-btn").addEventListener("click", () => {
   socket.emit("stop_auto_scheduler");
 });
 
-// Scheduler status updates
+// Scheduler status updates (also fired on connect — restores state after refresh)
 socket.on("scheduler_status", data => {
   const bar   = document.getElementById("scheduler-status-bar");
   const dot   = document.getElementById("scheduler-dot");
@@ -130,10 +164,26 @@ socket.on("scheduler_status", data => {
     bar.className  = "scheduler-bar running";
     dot.className  = "dot green";
     label.textContent = `🤖 Auto-Scheduler: ACTIVE — ${data.accounts || ''} accounts, ${data.total_daily || ''} invites/day`;
+
+    // Restore target_group field from server-sent config
+    if (data.target_group) {
+      const targetField = document.getElementById("auto-target");
+      if (!targetField.value) {
+        targetField.value = data.target_group;
+      }
+    }
   } else {
     bar.className  = "scheduler-bar stopped";
     dot.className  = "dot red";
     label.textContent = "Auto-Scheduler: Stopped";
+
+    // Try restoring target group from server config even when stopped
+    if (data.target_group) {
+      const targetField = document.getElementById("auto-target");
+      if (!targetField.value) {
+        targetField.value = data.target_group;
+      }
+    }
   }
 });
 
@@ -157,7 +207,7 @@ socket.on("next_batches", data => {
 
   const accs = data.accounts || [];
   panel.innerHTML = `
-    <div style="font-weight:700; margin-bottom:7px; color:#a78bfa;">⏰ Agle Batches & Aaj ka Score</div>
+    <div style="font-weight:700; margin-bottom:7px; color:#a78bfa;">⏰ Agle Batches &amp; Aaj ka Score</div>
     ${accs.map(a => {
       const pct = Math.min(100, Math.round((a.done_today / (a.limit || 1)) * 100));
       const barColor = pct >= 100 ? "#22c55e" : "#a78bfa";
@@ -324,8 +374,20 @@ document.getElementById("add-acc-btn").addEventListener("click", () => {
 // ── Download ──────────────────────────────────────────────────────────────
 window.download = type => { window.location.href = `/api/download/${type}`; };
 
-// ── Load progress on start ────────────────────────────────────────────────
+// ── Restore full state on page load ─────────────────────────────────────────
 window.addEventListener("load", () => {
+  // 1. Restore target group from localStorage (instant, before socket connects)
+  const savedTarget = localStorage.getItem("tg_target_group");
+  if (savedTarget) {
+    const targetField = document.getElementById("auto-target");
+    if (!targetField.value) targetField.value = savedTarget;
+  }
+  const savedMin = localStorage.getItem("tg_delay_min");
+  const savedMax = localStorage.getItem("tg_delay_max");
+  if (savedMin) document.getElementById("setting-delay-min").value = savedMin;
+  if (savedMax) document.getElementById("setting-delay-max").value = savedMax;
+
+  // 2. Restore progress stats from backend
   fetch("/api/progress").then(r => r.json()).then(data => {
     if (data.invited > 0) {
       document.getElementById("total-invited").textContent   = data.invited;
@@ -333,8 +395,27 @@ window.addEventListener("load", () => {
       if (data.daily) {
         document.getElementById("total-today").textContent = data.daily.total_today || 0;
       }
-      addLog(`🔄 Last session resumed: ${data.invited} invited, ${data.remaining} remaining.`, "warn");
+      if (data.total > 0) {
+        const pct = Math.min(100, Math.round((data.invited / data.total) * 100));
+        document.getElementById("progress-bar").style.width = `${pct}%`;
+        document.getElementById("progress-pct").textContent  = `${pct}%`;
+      }
     }
     if (data.accounts) renderAccountsLive(data.accounts, data.daily);
-  });
+  }).catch(() => {});
+
+  // 3. Restore target group from server config (authoritative source)
+  fetch("/api/status").then(r => r.json()).then(data => {
+    if (data.target_group) {
+      const targetField = document.getElementById("auto-target");
+      if (!targetField.value) {
+        targetField.value = data.target_group;
+        // Also update localStorage
+        localStorage.setItem("tg_target_group", data.target_group);
+      }
+    }
+    // Delay min/max
+    if (data.delay_min) document.getElementById("setting-delay-min").value = data.delay_min;
+    if (data.delay_max) document.getElementById("setting-delay-max").value = data.delay_max;
+  }).catch(() => {});
 });
